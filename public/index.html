@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vibe Check — AI or Human?</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080c0a;
+      --surface:   #0d1411;
+      --surface2:  #0a110e;
+      --border:    #1f3028;
+      --amber:     #f0a500;
+      --amber-dim: #7a5200;
+      --green:     #39ff14;
+      --red:       #ff3c3c;
+      --text:      #c8d8c2;
+      --muted:     #4a6050;
+    }
+
+    html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Share Tech Mono', monospace; overflow-x: hidden; }
+
+    /* scanlines */
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+      pointer-events: none; z-index: 9999;
+    }
+    /* vignette */
+    body::after {
+      content: ''; position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%);
+      pointer-events: none; z-index: 9998;
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(31,48,40,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(31,48,40,0.4) 1px, transparent 1px);
+      background-size: 40px 40px; z-index: 0;
+    }
+
+    #root {
+      position: relative; z-index: 1; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    /* ── Header ── */
+    .header { text-align: center; margin-bottom: 2.5rem; }
+    .header-eyebrow { font-size: 0.7rem; letter-spacing: 0.35em; color: var(--amber); text-transform: uppercase; margin-bottom: 0.5rem; opacity: 0.8; }
+    .header-title { font-family: 'Orbitron', sans-serif; font-size: clamp(2.2rem, 6vw, 3.8rem); font-weight: 900; letter-spacing: 0.08em; color: var(--amber); text-shadow: 0 0 20px rgba(240,165,0,0.6), 0 0 60px rgba(240,165,0,0.25); line-height: 1; }
+    .header-sub { margin-top: 0.75rem; font-size: 0.78rem; color: var(--muted); letter-spacing: 0.1em; }
+
+    /* ── Card ── */
+    .card { width: 100%; max-width: 660px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 0 0 1px rgba(240,165,0,0.05), 0 0 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(240,165,0,0.06); position: relative; overflow: hidden; }
+    .card::before { content: ''; display: block; height: 2px; background: linear-gradient(90deg, transparent, var(--amber), transparent); }
+    .card-inner { padding: 2rem 2rem 2.5rem; }
+
+    /* ── Input ── */
+    .input-label { display: block; font-size: 0.65rem; letter-spacing: 0.3em; color: var(--amber-dim); text-transform: uppercase; margin-bottom: 0.5rem; }
+    .input-row { display: flex; gap: 0.6rem; }
+    .url-input { flex: 1; background: #050807; border: 1px solid var(--border); color: var(--green); font-family: 'Share Tech Mono', monospace; font-size: 0.88rem; padding: 0.75rem 1rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; caret-color: var(--green); }
+    .url-input::placeholder { color: var(--muted); }
+    .url-input:focus { border-color: var(--amber-dim); box-shadow: 0 0 0 1px rgba(240,165,0,0.15), 0 0 12px rgba(240,165,0,0.08); }
+    .btn { background: var(--amber); color: #050807; font-family: 'Orbitron', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.75rem 1.2rem; border: none; cursor: pointer; white-space: nowrap; transition: background 0.15s, box-shadow 0.15s, transform 0.1s; }
+    .btn:hover:not(:disabled) { background: #ffc733; box-shadow: 0 0 16px rgba(240,165,0,0.4); }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { background: var(--amber-dim); cursor: not-allowed; opacity: 0.6; }
+
+    /* ── Error ── */
+    .error-bar { margin-top: 1rem; padding: 0.65rem 1rem; background: rgba(255,60,60,0.08); border: 1px solid rgba(255,60,60,0.25); color: var(--red); font-size: 0.78rem; letter-spacing: 0.05em; }
+    .error-bar::before { content: '✕ ERROR: '; opacity: 0.7; }
+
+    /* ── Spinner ── */
+    .loading-block { margin-top: 2rem; display: flex; flex-direction: column; align-items: center; gap: 1.2rem; }
+    .scanner-line-wrap { width: 100%; height: 2px; background: var(--border); position: relative; overflow: hidden; }
+    .scanner-line { position: absolute; top: 0; left: -40%; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, var(--amber), transparent); animation: scan 1.2s linear infinite; }
+    @keyframes scan { from { left: -40%; } to { left: 110%; } }
+    .loading-text { font-size: 0.7rem; letter-spacing: 0.3em; color: var(--amber-dim); animation: blink 1.1s step-start infinite; }
+    @keyframes blink { 50% { opacity: 0.2; } }
+
+    /* ── Results ── */
+    .results { margin-top: 2.2rem; animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .divider { height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin-bottom: 2rem; }
+
+    /* Score row */
+    .score-row { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 1.2rem; }
+    .score-number { font-family: 'Orbitron', sans-serif; font-size: clamp(3.5rem, 12vw, 5.5rem); font-weight: 900; line-height: 1; letter-spacing: -0.02em; transition: color 0.5s, text-shadow 0.5s; }
+    .score-number.ai    { color: var(--red);   text-shadow: 0 0 30px rgba(255,60,60,0.5),  0 0 80px rgba(255,60,60,0.15); }
+    .score-number.human { color: var(--green); text-shadow: 0 0 30px rgba(57,255,20,0.5),  0 0 80px rgba(57,255,20,0.15); }
+
+    .verdict-badge { font-family: 'Orbitron', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.15em; padding: 0.4rem 0.9rem; border: 1px solid; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .verdict-badge.ai    { color: var(--red);   border-color: rgba(255,60,60,0.4);  background: rgba(255,60,60,0.07); }
+    .verdict-badge.human { color: var(--green); border-color: rgba(57,255,20,0.4); background: rgba(57,255,20,0.07); }
+
+    /* Main progress bar */
+    .progress-track { height: 6px; background: #0a100d; border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.4rem; position: relative; }
+    .progress-fill { height: 100%; transition: width 1s cubic-bezier(0.22,1,0.36,1); position: relative; }
+    .progress-fill::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: inherit; filter: blur(4px) brightness(2); }
+    .progress-fill.ai    { background: var(--red); }
+    .progress-fill.human { background: var(--green); }
+    .progress-ticks { display: flex; justify-content: space-between; margin-bottom: 2rem; }
+    .progress-tick { font-size: 0.6rem; color: var(--muted); letter-spacing: 0.05em; }
+
+    /* ── Metric Breakdown Panel ── */
+    .breakdown-panel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      margin-bottom: 1.8rem;
+      overflow: hidden;
+    }
+    .breakdown-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .breakdown-header-label { font-size: 0.62rem; letter-spacing: 0.3em; color: var(--amber-dim); text-transform: uppercase; }
+    .breakdown-chevron { font-size: 0.7rem; color: var(--muted); transition: transform 0.25s; }
+    .breakdown-chevron.open { transform: rotate(180deg); }
+    .breakdown-body { overflow: hidden; transition: max-height 0.35s ease; }
+    .breakdown-body.collapsed { max-height: 0; }
+    .breakdown-body.expanded  { max-height: 400px; }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 36px;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid rgba(31,48,40,0.6);
+      animation: fadeIn 0.3s ease both;
+    }
+    .metric-row:last-child { border-bottom: none; }
+
+    .metric-name { font-size: 0.62rem; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+
+    .metric-bar-track { height: 4px; background: #050807; border: 1px solid var(--border); overflow: hidden; position: relative; }
+    .metric-bar-fill  { height: 100%; transition: width 0.9s cubic-bezier(0.22,1,0.36,1); }
+
+    .metric-value { font-family: 'Orbitron', sans-serif; font-size: 0.62rem; text-align: right; }
+
+    /* metric weight pills */
+    .metric-weight { font-size: 0.52rem; color: var(--amber-dim); margin-left: 0.3rem; }
+
+    /* ── Reasons ── */
+    .reasons-label { font-size: 0.62rem; letter-spacing: 0.3em; color: var(--amber-dim); text-transform: uppercase; margin-bottom: 0.8rem; }
+    .reason-item { display: flex; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; line-height: 1.55; color: var(--text); align-items: flex-start; animation: fadeIn 0.4s ease both; }
+    .reason-item:last-child { border-bottom: none; }
+    .reason-bullet { color: var(--amber); font-size: 0.75rem; margin-top: 0.1rem; flex-shrink: 0; }
+
+    /* ── Footer ── */
+    .footer { margin-top: 1.8rem; font-size: 0.62rem; color: var(--muted); letter-spacing: 0.12em; text-align: center; }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .card-inner { padding: 1.5rem 1.2rem 2rem; }
+      .input-row  { flex-direction: column; }
+      .btn        { width: 100%; text-align: center; }
+      .metric-row { grid-template-columns: 90px 1fr 30px; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    // ── Backend URL ─────────────────────────────────────────────────────────
+    // Replace this with your InfinityFree (or any PHP host) URL after deploying analyze.php
+    const BACKEND_URL = '/api/analyze';
+
+    const { useState, useEffect, useRef } = React;
+
+    // ── Animated counter ────────────────────────────────────────────────────
+    function useCountUp(target, duration = 900) {
+      const [val, setVal] = useState(0);
+      const raf = useRef(null);
+      useEffect(() => {
+        if (target === null) { setVal(0); return; }
+        const start = performance.now();
+        const step = (now) => {
+          const t = Math.min((now - start) / duration, 1);
+          const ease = 1 - Math.pow(1 - t, 3);
+          setVal(Math.round(target * ease));
+          if (t < 1) raf.current = requestAnimationFrame(step);
+        };
+        raf.current = requestAnimationFrame(step);
+        return () => cancelAnimationFrame(raf.current);
+      }, [target]);
+      return val;
+    }
+
+    // ── Animated bar ────────────────────────────────────────────────────────
+    function AnimBar({ value, color, delay = 0 }) {
+      const [w, setW] = useState(0);
+      useEffect(() => {
+        const t = setTimeout(() => setW(value), 80 + delay);
+        return () => clearTimeout(t);
+      }, [value]);
+      return (
+        <div className="metric-bar-track">
+          <div className="metric-bar-fill" style={{ width: `${w}%`, background: color, transition: `width 0.9s ${delay}ms cubic-bezier(0.22,1,0.36,1)` }} />
+        </div>
+      );
+    }
+
+    // ── Metric colour based on score ────────────────────────────────────────
+    function metricColor(val) {
+      if (val >= 70) return '#ff3c3c';
+      if (val >= 45) return '#f0a500';
+      return '#39ff14';
+    }
+
+    // ── Metric breakdown panel ───────────────────────────────────────────────
+    const METRIC_META = [
+      { key: 'genericity', label: 'Phrase',     weight: '25%', desc: 'Generic marketing phrase density' },
+      { key: 'metadata',   label: 'Metadata',   weight: '23%', desc: 'Builder/tool fingerprints' },
+      { key: 'entropy',    label: 'Entropy',     weight: '18%', desc: 'Content & class repetition' },
+      { key: 'emoji',      label: 'Emoji',       weight: '14%', desc: 'Emoji density & vibe patterns' },
+      { key: 'structure',  label: 'Structure',   weight: '13%', desc: 'Template section patterns' },
+      { key: 'naming',     label: 'Naming',      weight: '7%',  desc: 'CSS naming uniformity' },
+    ];
+
+    function BreakdownPanel({ breakdown }) {
+      const [open, setOpen] = useState(true);
+      return (
+        <div className="breakdown-panel">
+          <div className="breakdown-header" onClick={() => setOpen(o => !o)}>
+            <span className="breakdown-header-label">▸ Metric Breakdown</span>
+            <span className={`breakdown-chevron ${open ? 'open' : ''}`}>▼</span>
+          </div>
+          <div className={`breakdown-body ${open ? 'expanded' : 'collapsed'}`}>
+            {METRIC_META.map(({ key, label, weight }, i) => {
+              const val = breakdown[key] ?? 0;
+              return (
+                <div className="metric-row" key={key} style={{ animationDelay: `${i * 0.07}s` }}>
+                  <span className="metric-name">
+                    {label}<span className="metric-weight">{weight}</span>
+                  </span>
+                  <AnimBar value={val} color={metricColor(val)} delay={i * 60} />
+                  <span className="metric-value" style={{ color: metricColor(val) }}>{val}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Main progress bar ────────────────────────────────────────────────────
+    function MainProgressBar({ score, cls }) {
+      const [w, setW] = useState(0);
+      useEffect(() => { const t = setTimeout(() => setW(score), 80); return () => clearTimeout(t); }, [score]);
+      return (
+        <>
+          <div className="progress-track">
+            <div className={`progress-fill ${cls}`} style={{ width: `${w}%` }} />
+          </div>
+          <div className="progress-ticks">
+            <span className="progress-tick">0% HUMAN</span>
+            <span className="progress-tick">50%</span>
+            <span className="progress-tick">AI 100%</span>
+          </div>
+        </>
+      );
+    }
+
+    // ── Spinner ──────────────────────────────────────────────────────────────
+    function Spinner() {
+      const msgs = ['FETCHING HTML...', 'SCANNING PHRASES...', 'COMPUTING ENTROPY...', 'ANALYZING STRUCTURE...', 'FINALIZING SCORE...'];
+      const [idx, setIdx] = useState(0);
+      useEffect(() => { const iv = setInterval(() => setIdx(i => (i+1) % msgs.length), 1100); return () => clearInterval(iv); }, []);
+      return (
+        <div className="loading-block">
+          <div className="scanner-line-wrap"><div className="scanner-line" /></div>
+          <div className="loading-text">{msgs[idx]}</div>
+        </div>
+      );
+    }
+
+    // ── Results ──────────────────────────────────────────────────────────────
+    function Results({ data }) {
+      const { score, verdict, reasons, metricBreakdown } = data;
+      const cls      = verdict === 'Likely AI' ? 'ai' : 'human';
+      const displayed = useCountUp(score);
+
+      return (
+        <div className="results">
+          <div className="divider" />
+
+          <div className="score-row">
+            <div className={`score-number ${cls}`}>
+              {displayed}<span style={{ fontSize: '40%', opacity: 0.6 }}>%</span>
+            </div>
+            <div className={`verdict-badge ${cls}`}>{verdict}</div>
+          </div>
+
+          <MainProgressBar score={score} cls={cls} />
+
+          {metricBreakdown && <BreakdownPanel breakdown={metricBreakdown} />}
+
+          <div className="reasons-label">▸ Analysis Output</div>
+          {reasons.map((r, i) => (
+            <div className="reason-item" key={i} style={{ animationDelay: `${i * 0.12}s` }}>
+              <span className="reason-bullet">◆</span>
+              <span>{r}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ── App ──────────────────────────────────────────────────────────────────
+    function App() {
+      const [url,     setUrl]     = useState('');
+      const [loading, setLoading] = useState(false);
+      const [result,  setResult]  = useState(null);
+      const [error,   setError]   = useState('');
+
+      const handleCheck = async () => {
+        if (!url.trim()) return;
+        setLoading(true); setResult(null); setError('');
+        try {
+          const res  = await fetch(BACKEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim() }) });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+          setResult(data);
+        } catch (e) {
+          setError(e.message || 'Could not reach the server');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <>
+          <div className="header">
+            <div className="header-eyebrow">◈ Diagnostic System v2.0</div>
+            <div className="header-title">VIBE CHECK</div>
+            <div className="header-sub">AI-generated or human-written? Enter a URL to find out.</div>
+          </div>
+
+          <div className="card">
+            <div className="card-inner">
+              <label className="input-label" htmlFor="url-input">▸ Target URL</label>
+              <div className="input-row">
+                <input
+                  id="url-input" className="url-input" type="text"
+                  placeholder="https://example.com"
+                  value={url} onChange={e => setUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !loading && handleCheck()}
+                  disabled={loading} autoComplete="off" spellCheck="false"
+                />
+                <button className="btn" onClick={handleCheck} disabled={loading || !url.trim()}>
+                  {loading ? '...' : 'Check Vibe'}
+                </button>
+              </div>
+
+              {error && <div className="error-bar">{error}</div>}
+              {loading && <Spinner />}
+              {result && !loading && <Results data={result} />}
+            </div>
+          </div>
+
+          <div className="footer">VIBE CHECK v2.1 — 6-METRIC WEIGHTED ENGINE &nbsp;|&nbsp; NO DATA STORED</div>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
