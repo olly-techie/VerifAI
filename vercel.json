@@ -1,6 +1,9 @@
 {
-  "version": 2,
-  "rewrites": [
-    { "source": "/api/analyze", "destination": "/api/analyze.js" }
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://verifai.rf.gd/$1",
+      "permanent": true
+    }
   ]
 }
